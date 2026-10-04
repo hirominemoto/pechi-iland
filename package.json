@@ -1,0 +1,21 @@
+{
+  "name": "pechi-island",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ペチ島を360度見渡して歩ける、コードだけで作った3Dアイランド。",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "preview": "node scripts/serve.mjs",
+    "check": "node --check src/island3d.js && node --check scripts/build.mjs && node --check scripts/serve.mjs"
+  },
+  "dependencies": {
+    "three": "0.180.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10"
+  }
+}

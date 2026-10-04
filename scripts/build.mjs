@@ -1,0 +1,13 @@
+import {build} from 'esbuild';
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=fileURLToPath(new URL('../',import.meta.url));
+process.chdir(root);
+fs.mkdirSync('docs',{recursive:true});
+await build({entryPoints:['./src/island3d.js'],bundle:true,minify:true,format:'iife',outfile:'docs/island3d.js',legalComments:'eof'});
+fs.copyFileSync('src/index.html','docs/index.html');
+for(const name of fs.readdirSync('static'))fs.copyFileSync(path.join('static',name),path.join('docs',name));
+fs.copyFileSync('node_modules/three/LICENSE','docs/THREE-LICENSE.txt');
+fs.writeFileSync('docs/.nojekyll','');
+console.log('公開用のファイルを docs に生成しました。');

@@ -1,0 +1,69 @@
+# ペチ島 — 360° Island Explorer
+
+架空の物語「ペチ島」を、コードだけで描く3Dウェブページです。地形・草木・建物・海・登場人物・表面模様を手続き的に生成します。外部の画像素材や3Dモデルは読み込みません。
+
+![ペチ島のプレビュー](preview.png)
+
+## できること
+
+- 島を360度、自動またはドラッグで見渡す
+- 地上を歩く（W/A/S/D、矢印キー、画面の矢印ボタン）
+- 桟橋・パイナップル畑・洞窟入口・さいばんしょへ移動
+- ペチ隊長・ヒロミーヌ・ミラと一緒におさんぽ
+- 昼と夕暮れの切り替え、登場人物の一時停止
+
+## 開く
+
+`docs/index.html` をChromeまたはEdgeで開きます。同じフォルダーのファイルは移動せず、そのままにしてください。WebGL 2対応のブラウザーが必要です。
+
+## 編集・再生成する
+
+Node.js 20以降で実行します。
+
+```sh
+npm ci
+npm run check
+npm run build
+npm run preview
+```
+
+プレビューは http://127.0.0.1:8766/ です。
+
+| 保存場所 | 内容 |
+| --- | --- |
+| src/island3d.js | 編集する3D描画・操作のソース |
+| src/index.html | 編集するページの表示・ボタン・スタイル |
+| scripts/ | ビルドとローカルプレビュー |
+| static/ | 以前のSVG版と、その表示ページ |
+| docs/ | そのままウェブに公開できる完成ファイル |
+
+修正後は `npm run build` を実行し、ソースと `docs/` の変更を一緒に保存します。公開ファイルにはThree.jsが含まれ、CDNへの接続は不要です。
+
+## GitHub Pagesで公開する
+
+1. GitHubでこのリポジトリの **Settings → Pages** を開きます。
+2. **Build and deployment → Source** を **Deploy from a branch** にします。
+3. **Branch: main**、フォルダー **/docs** を選び、**Save** を押します。
+4. デプロイが完了したら、その画面に表示されるサイトURLを開きます。
+
+通常のプロジェクトURLは `https://<GitHubユーザー名>.github.io/<リポジトリ名>/` です。
+GitHub FreeでPagesを使う場合、リポジトリをPublicにする必要があります。Publicにすると作品のコードも閲覧可能になります。非公開リポジトリでのPages利用には対応プランが必要です。
+
+[GitHub公式：GitHub Pagesサイトの作成](https://docs.github.com/ja/pages/getting-started-with-github-pages/creating-a-github-pages-site)
+
+別の静的サイト用サーバーを使う場合は、`docs/` の**中身**を公開フォルダーへアップロードしてください。
+
+## 表現について
+
+自然の質感を増やしたミニチュア風の3Dです。海・急斜面・家の内部には入れません。洞窟は入口を観察できます。原作全体のイベント進行や台風化は実装していません。
+
+## 原作・参考
+
+- えありす「[ペチ島は今日も大騒ぎ＜vol.1＞](https://note.com/quick_gibbon9234/n/n1272e8d9843b)」
+- 制作者から提供された島と登場人物の参考画像
+
+原作や参考画像そのものは、このリポジトリには同梱していません。フォント指定はMeiryo UIです。
+
+## 同梱ライブラリ
+
+Three.js 0.180.0（MIT）。ライセンス本文は `docs/THREE-LICENSE.txt` にあります。ビルドにはesbuild 0.25.10を使用しています。
