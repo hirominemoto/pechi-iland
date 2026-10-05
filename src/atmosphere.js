@@ -66,7 +66,8 @@ export function createFireworks(scene,camera,{reducedMotion=false}={}) {
     fragmentShader:`varying vec3 vColor;varying float vAlpha;
       void main(){float d=length(gl_PointCoord-.5);if(d>.49)discard;
       float edge=1.-smoothstep(.33,.49,d);
-      gl_FragColor=vec4(mix(vColor,vec3(1.),.12),vAlpha*edge);
+      float core=1.-smoothstep(.035,.19,d);
+      gl_FragColor=vec4(mix(vColor,vec3(1.),core*.45),vAlpha*edge);
       #include <colorspace_fragment>
       }`
   });
@@ -81,12 +82,21 @@ export function createFireworks(scene,camera,{reducedMotion=false}={}) {
   cloud.frustumCulled=trails.frustumCulled=false;cloud.visible=trails.visible=false;
   // Draw the faint tail first, then the crisp head.
   trails.renderOrder=1;cloud.renderOrder=2;scene.add(cloud,trails);
-  const palette=[0xfff5e5,0xffd481,0xffc3d4,0xc8ddff].map(c=>new THREE.Color(c));
+  const palette=[0xffbe18,0xff38ad,0x27d5ff,0xb04cff,0xff3939].map(c=>new THREE.Color(c));
+  const white=new THREE.Color(0xfffaf2),trailColor=new THREE.Color();
+  // Color has its own random stream so it cannot alter the existing spark trajectories.
+  let colorSeed=Date.now()>>>0,colorOrder=[];
+  function colorRandom(){colorSeed=(colorSeed*1664525+1013904223)>>>0;return colorSeed/4294967296;}
+  function nextColor(){
+    if(!colorOrder.length){colorOrder=palette.map((_,i)=>i);for(let i=colorOrder.length-1;i>0;i--){const j=Math.floor(colorRandom()*(i+1));[colorOrder[i],colorOrder[j]]=[colorOrder[j],colorOrder[i]];}}
+    return palette[colorOrder.pop()];
+  }
   const particles=[],rockets=[];
   let enabled=false,active=false,timer=0,sequence=0;
   const sample=new THREE.Vector3(),tailSample=new THREE.Vector3();
   const random=()=>Math.random();
   function burst(center,shell){
+    const base=nextColor();
     // A hollow outer shell, open sectors and a few inner sparks give the shape breathing room.
     for(let i=0;i<112;i++){
       const y=1-2*(i+.5)/112,a=i*2.399963,r=Math.sqrt(1-y*y);
@@ -94,9 +104,7 @@ export function createFireworks(scene,camera,{reducedMotion=false}={}) {
       if(random()>density)continue;
       const direction=new THREE.Vector3(Math.cos(a)*r,y,Math.sin(a)*r);
       const outer=random()>.16,speed=outer?7.2+random()*1.6:3.7+random()*1.3;
-      const base=palette[shell%palette.length];
-      const accent=palette[outer?(i%7===0?0:(shell+1)%3):1];
-      const color=base.clone().lerp(accent,i%7===0?.65:.18);
+      const color=base.clone();
       particles.push({origin:center.clone(),velocity:direction.multiplyScalar(speed),age:0,life:2.7+random()*.6,color,size:outer?.48:.35,trail:outer?.46:.25});
     }
   }
@@ -120,7 +128,7 @@ export function createFireworks(scene,camera,{reducedMotion=false}={}) {
   return {
     setNight(value){
       enabled=value;active=value&&!reducedMotion;timer=.15;sequence=0;
-      particles.length=rockets.length=0;geometry.setDrawRange(0,0);trailGeometry.setDrawRange(0,0);
+      particles.length=rockets.length=colorOrder.length=0;geometry.setDrawRange(0,0);trailGeometry.setDrawRange(0,0);
       cloud.visible=trails.visible=value;
     },
     setActive(value){active=value;timer=Math.min(timer,.25);},
@@ -131,10 +139,10 @@ export function createFireworks(scene,camera,{reducedMotion=false}={}) {
       for(let i=rockets.length-1;i>=0;i--){const r=rockets[i];r.p.y+=dt*23;if(r.p.y>=r.top){burst(r.p,r.shell);rockets.splice(i,1);}}
       for(let i=particles.length-1;i>=0;i--){particles[i].age+=dt;if(particles[i].age>particles[i].life)particles.splice(i,1);}
       let count=0,lineCount=0;
-      const rocketColor=palette[0];
+      const rocketColor=white;
       for(const r of rockets){
         if(count<capacity)write(geometry,count++,r.p,rocketColor,.95,.4);
-        if(lineCount+2<=trailCapacity){write(trailGeometry,lineCount++,{x:r.p.x,y:r.p.y-2,z:r.p.z},palette[1],0,1);write(trailGeometry,lineCount++,r.p,rocketColor,.65,1);}
+        if(lineCount+2<=trailCapacity){write(trailGeometry,lineCount++,{x:r.p.x,y:r.p.y-2,z:r.p.z},palette[0],0,1);write(trailGeometry,lineCount++,r.p,rocketColor,.65,1);}
       }
       for(const p of particles){
         const age=p.age;if(age<.035)continue; // Avoid a large bright clump at the ignition point.
@@ -144,8 +152,9 @@ export function createFireworks(scene,camera,{reducedMotion=false}={}) {
         const start=Math.max(0,age-p.trail),segments=8;
         for(let k=0;k<segments&&lineCount+2<=trailCapacity;k++){
           const u=k/segments,v=(k+1)/segments;
-          position(p,start+(age-start)*u,tailSample);write(trailGeometry,lineCount++,tailSample,p.color,fade*Math.pow(u,1.2)*.72,1);
-          position(p,start+(age-start)*v,tailSample);write(trailGeometry,lineCount++,tailSample,p.color,fade*Math.pow(v,1.2)*.72,1);
+          const timeU=start+(age-start)*u,timeV=start+(age-start)*v;
+          position(p,timeU,tailSample);trailColor.copy(white).lerp(p.color,Math.min(1,timeU/.22));write(trailGeometry,lineCount++,tailSample,trailColor,fade*Math.pow(u,1.2)*.72,1);
+          position(p,timeV,tailSample);trailColor.copy(white).lerp(p.color,Math.min(1,timeV/.22));write(trailGeometry,lineCount++,tailSample,trailColor,fade*Math.pow(v,1.2)*.72,1);
         }
       }
       geometry.setDrawRange(0,count);trailGeometry.setDrawRange(0,lineCount);
