@@ -82,7 +82,7 @@ export function createFireworks(scene,camera,{reducedMotion=false}={}) {
   cloud.frustumCulled=trails.frustumCulled=false;cloud.visible=trails.visible=false;
   // Draw the faint tail first, then the crisp head.
   trails.renderOrder=1;cloud.renderOrder=2;scene.add(cloud,trails);
-  const palette=[0xffbe18,0xff38ad,0x27d5ff,0xb04cff,0xff3939].map(c=>new THREE.Color(c));
+  const palette=[0xffcf28,0xff59bc,0x48ddff,0xc878ff,0xff5757].map(c=>new THREE.Color(c).multiplyScalar(1.25));
   const white=new THREE.Color(0xfffaf2),trailColor=new THREE.Color();
   // Color has its own random stream so it cannot alter the existing spark trajectories.
   let colorSeed=Date.now()>>>0,colorOrder=[];
