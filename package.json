@@ -10,7 +10,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "preview": "node scripts/serve.mjs",
-    "check": "node --check src/island3d.js && node --check src/atmosphere.js && node --check scripts/build.mjs && node --check scripts/serve.mjs"
+    "check": "node --check src/island3d.js && node --check src/atmosphere.js && node --check src/resident-routes.js && node --check scripts/build.mjs && node --check scripts/serve.mjs"
   },
   "dependencies": {
     "three": "0.180.0"
