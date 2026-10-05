@@ -115,7 +115,7 @@ export function createFireworks(scene,camera,{reducedMotion=false}={}) {
   }
   function launch(){
     let angle=Math.atan2(camera.position.x,camera.position.z)+Math.PI;
-    angle+=[-.55,.48,-.1,.67,-.35][sequence%5];
+    angle+=[-.18,.02,.18,-.1,.1][sequence%5];
     const radius=38+(sequence%3)*2,top=31+(sequence%3)*2.5;
     rockets.push({p:new THREE.Vector3(Math.sin(angle)*radius,2,Math.cos(angle)*radius),top,shell:sequence++});
   }
@@ -135,7 +135,7 @@ export function createFireworks(scene,camera,{reducedMotion=false}={}) {
     get active(){return active;},
     update(dt){
       if(!enabled||!active)return;
-      timer-=dt;if(timer<=0){launch();timer=2.65;}
+      timer-=dt;if(timer<=0){launch();timer=[1.05,.9,1.8][(sequence-1)%3];}
       for(let i=rockets.length-1;i>=0;i--){const r=rockets[i];r.p.y+=dt*23;if(r.p.y>=r.top){burst(r.p,r.shell);rockets.splice(i,1);}}
       for(let i=particles.length-1;i>=0;i--){particles[i].age+=dt;if(particles[i].age>particles[i].life)particles.splice(i,1);}
       let count=0,lineCount=0;
