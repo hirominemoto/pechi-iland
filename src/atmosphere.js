@@ -47,53 +47,109 @@ export function createAtmosphere(scene) {
   };
 }
 
-// Fixed-capacity particle buffers: rockets, expanding sparks and fading trails.
+// Small sharp spark heads and one-pixel trails; no bloom pass or wide glow sprite.
 export function createFireworks(scene,camera,{reducedMotion=false}={}) {
-  const capacity=4200,positions=new Float32Array(capacity*3),colors=new Float32Array(capacity*3),alpha=new Float32Array(capacity),sizes=new Float32Array(capacity);
-  const geometry=new THREE.BufferGeometry();
-  for(const [name,data,size] of [['position',positions,3],['color',colors,3],['aAlpha',alpha,1],['aSize',sizes,1]])geometry.setAttribute(name,new THREE.BufferAttribute(data,size).setUsage(THREE.DynamicDrawUsage));
-  geometry.setDrawRange(0,0);
-  const material=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
-    vertexShader:`attribute vec3 color;attribute float aAlpha,aSize;varying vec3 vColor;varying float vAlpha;void main(){vColor=color;vAlpha=aAlpha;vec4 p=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*p;gl_PointSize=clamp(aSize*680./max(1.,-p.z),1.,24.);}`,
-    fragmentShader:`varying vec3 vColor;varying float vAlpha;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;float glow=exp(-d*d*15.);vec3 color=mix(vColor*1.5,vec3(1.),pow(glow,6.)*.45);gl_FragColor=vec4(color,vAlpha*glow);#include <colorspace_fragment>}`.replace(';#include',';\n#include')
+  const capacity=640,trailCapacity=capacity*16;
+  function buffer(count){
+    const geometry=new THREE.BufferGeometry();
+    for(const [name,size] of [['position',3],['color',3],['aAlpha',1],['aSize',1]])
+      geometry.setAttribute(name,new THREE.BufferAttribute(new Float32Array(count*size),size).setUsage(THREE.DynamicDrawUsage));
+    geometry.setDrawRange(0,0);return geometry;
+  }
+  const geometry=buffer(capacity),trailGeometry=buffer(trailCapacity);
+  const vertexShader=`attribute vec3 color;attribute float aAlpha,aSize;
+    varying vec3 vColor;varying float vAlpha;
+    void main(){vColor=color;vAlpha=aAlpha;vec4 p=modelViewMatrix*vec4(position,1.);
+    gl_Position=projectionMatrix*p;gl_PointSize=clamp(aSize*420./max(1.,-p.z),1.05,2.4);}`;
+  const material=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.NormalBlending,
+    vertexShader,
+    fragmentShader:`varying vec3 vColor;varying float vAlpha;
+      void main(){float d=length(gl_PointCoord-.5);if(d>.49)discard;
+      float edge=1.-smoothstep(.33,.49,d);
+      gl_FragColor=vec4(mix(vColor,vec3(1.),.12),vAlpha*edge);
+      #include <colorspace_fragment>
+      }`
   });
-  const cloud=new THREE.Points(geometry,material);cloud.frustumCulled=false;cloud.visible=false;scene.add(cloud);
-  const palette=[0xffcc65,0xff5c9d,0x67e5ff,0xb88aff,0xff855b].map(c=>new THREE.Color(c));
+  const trailMaterial=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.NormalBlending,
+    vertexShader,
+    fragmentShader:`varying vec3 vColor;varying float vAlpha;
+      void main(){gl_FragColor=vec4(vColor,vAlpha);
+      #include <colorspace_fragment>
+      }`
+  });
+  const cloud=new THREE.Points(geometry,material),trails=new THREE.LineSegments(trailGeometry,trailMaterial);
+  cloud.frustumCulled=trails.frustumCulled=false;cloud.visible=trails.visible=false;
+  // Draw the faint tail first, then the crisp head.
+  trails.renderOrder=1;cloud.renderOrder=2;scene.add(cloud,trails);
+  const palette=[0xfff5e5,0xffd481,0xffc3d4,0xc8ddff].map(c=>new THREE.Color(c));
   const particles=[],rockets=[];
   let enabled=false,active=false,timer=0,sequence=0;
+  const sample=new THREE.Vector3(),tailSample=new THREE.Vector3();
   const random=()=>Math.random();
-  function burst(center,color) {
-    for(let i=0;i<150;i++){
-      const y=1-2*(i+.5)/150,a=i*2.399963,r=Math.sqrt(1-y*y),speed=5+random()*4;
-      const velocity=new THREE.Vector3(Math.cos(a)*r,y,Math.sin(a)*r).multiplyScalar(speed);
-      particles.push({p:center.clone(),v:velocity,tail:[center.clone(),center.clone(),center.clone()],age:0,life:2.5+random()*1.2,color});
+  function burst(center,shell){
+    // A hollow outer shell, open sectors and a few inner sparks give the shape breathing room.
+    for(let i=0;i<112;i++){
+      const y=1-2*(i+.5)/112,a=i*2.399963,r=Math.sqrt(1-y*y);
+      const density=.75+.2*Math.sin(a*3+shell);
+      if(random()>density)continue;
+      const direction=new THREE.Vector3(Math.cos(a)*r,y,Math.sin(a)*r);
+      const outer=random()>.16,speed=outer?7.2+random()*1.6:3.7+random()*1.3;
+      const base=palette[shell%palette.length];
+      const accent=palette[outer?(i%7===0?0:(shell+1)%3):1];
+      const color=base.clone().lerp(accent,i%7===0?.65:.18);
+      particles.push({origin:center.clone(),velocity:direction.multiplyScalar(speed),age:0,life:2.7+random()*.6,color,size:outer?.48:.35,trail:outer?.46:.25});
     }
   }
-  function launch() {
-    // Launch on the far shore relative to the visitor, keeping the island in view.
+  function position(p,t,out){
+    // Drag slows the expansion; gravity bends each tail downward before it fades.
+    const travel=(1-Math.exp(-.3*t))/.3;
+    out.copy(p.origin).addScaledVector(p.velocity,travel);out.y-=1.1*t*t;return out;
+  }
+  function launch(){
     let angle=Math.atan2(camera.position.x,camera.position.z)+Math.PI;
-    angle+=[-.6,.42,0,.76,-.35][sequence%5];
-    const radius=36+(sequence%3)*3,top=31+(sequence%3)*5;
-    const p=new THREE.Vector3(Math.sin(angle)*radius,2,Math.cos(angle)*radius);
-    rockets.push({p,top,age:0,color:palette[sequence++%palette.length]});
+    angle+=[-.55,.48,-.1,.67,-.35][sequence%5];
+    const radius=38+(sequence%3)*2,top=31+(sequence%3)*2.5;
+    rockets.push({p:new THREE.Vector3(Math.sin(angle)*radius,2,Math.cos(angle)*radius),top,shell:sequence++});
+  }
+  function write(geo,index,p,color,opacity,size){
+    const j=index*3,attributes=geo.attributes;
+    const xyz=attributes.position.array,rgb=attributes.color.array;
+    xyz[j]=p.x;xyz[j+1]=p.y;xyz[j+2]=p.z;rgb[j]=color.r;rgb[j+1]=color.g;rgb[j+2]=color.b;
+    attributes.aAlpha.array[index]=opacity;attributes.aSize.array[index]=size;
   }
   return {
-    setNight(value) {
+    setNight(value){
       enabled=value;active=value&&!reducedMotion;timer=.15;sequence=0;
-      particles.length=rockets.length=0;geometry.setDrawRange(0,0);cloud.visible=value;
+      particles.length=rockets.length=0;geometry.setDrawRange(0,0);trailGeometry.setDrawRange(0,0);
+      cloud.visible=trails.visible=value;
     },
     setActive(value){active=value;timer=Math.min(timer,.25);},
     get active(){return active;},
     update(dt){
       if(!enabled||!active)return;
-      timer-=dt;if(timer<=0){launch();timer=1.6;}
-      for(let i=rockets.length-1;i>=0;i--){let r=rockets[i];r.age+=dt;r.p.y+=dt*23;if(r.p.y>=r.top){burst(r.p,r.color);rockets.splice(i,1);}}
-      for(let i=particles.length-1;i>=0;i--){let p=particles[i];p.age+=dt;if(p.age>p.life){particles.splice(i,1);continue;}p.tail[2].copy(p.tail[1]);p.tail[1].copy(p.tail[0]);p.tail[0].copy(p.p);p.v.multiplyScalar(Math.exp(-dt*.42));p.v.y-=dt*1.4;p.p.addScaledVector(p.v,dt);}
-      let count=0;
-      function point(p,color,opacity,size){if(count>=capacity)return;const j=count*3;positions[j]=p.x;positions[j+1]=p.y;positions[j+2]=p.z;colors[j]=color.r;colors[j+1]=color.g;colors[j+2]=color.b;alpha[count]=opacity;sizes[count]=size;count++;}
-      for(const r of rockets)for(let i=0;i<12;i++)point({x:r.p.x,y:r.p.y-i*.25,z:r.p.z},r.color,1-i/12,.9-i*.04);
-      for(const p of particles){const fade=Math.min(1,(p.life-p.age)/1.8);point(p.p,p.color,fade,1.5);for(let i=0;i<3;i++)point(p.tail[i],p.color,fade*(.65-i*.15),1.1-i*.16);}
-      geometry.setDrawRange(0,count);for(const attribute of Object.values(geometry.attributes))attribute.needsUpdate=true;
+      timer-=dt;if(timer<=0){launch();timer=2.65;}
+      for(let i=rockets.length-1;i>=0;i--){const r=rockets[i];r.p.y+=dt*23;if(r.p.y>=r.top){burst(r.p,r.shell);rockets.splice(i,1);}}
+      for(let i=particles.length-1;i>=0;i--){particles[i].age+=dt;if(particles[i].age>particles[i].life)particles.splice(i,1);}
+      let count=0,lineCount=0;
+      const rocketColor=palette[0];
+      for(const r of rockets){
+        if(count<capacity)write(geometry,count++,r.p,rocketColor,.95,.4);
+        if(lineCount+2<=trailCapacity){write(trailGeometry,lineCount++,{x:r.p.x,y:r.p.y-2,z:r.p.z},palette[1],0,1);write(trailGeometry,lineCount++,r.p,rocketColor,.65,1);}
+      }
+      for(const p of particles){
+        const age=p.age;if(age<.035)continue; // Avoid a large bright clump at the ignition point.
+        const fade=Math.min(1,(p.life-age)/1.05);
+        position(p,age,sample);
+        if(count<capacity)write(geometry,count++,sample,p.color,fade*.96,p.size);
+        const start=Math.max(0,age-p.trail),segments=8;
+        for(let k=0;k<segments&&lineCount+2<=trailCapacity;k++){
+          const u=k/segments,v=(k+1)/segments;
+          position(p,start+(age-start)*u,tailSample);write(trailGeometry,lineCount++,tailSample,p.color,fade*Math.pow(u,1.2)*.72,1);
+          position(p,start+(age-start)*v,tailSample);write(trailGeometry,lineCount++,tailSample,p.color,fade*Math.pow(v,1.2)*.72,1);
+        }
+      }
+      geometry.setDrawRange(0,count);trailGeometry.setDrawRange(0,lineCount);
+      for(const geo of [geometry,trailGeometry])for(const attribute of Object.values(geo.attributes))attribute.needsUpdate=true;
     },
     get particleCount(){return geometry.drawRange.count;}
   };
